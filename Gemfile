@@ -5,6 +5,8 @@ ruby '2.6.0'
 
 gem 'mongoid', '~> 7.0.5'
 
+gem 'google-cloud-firestore', '~> 0.21.0'
+
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
 gem 'rails', '~> 6.0.3'
 # Use Puma as the app server
