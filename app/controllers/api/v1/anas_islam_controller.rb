@@ -1,6 +1,8 @@
 require 'google/cloud/firestore'
 require 'json'
 
+# https://cloud.google.com/firestore/docs/query-data/order-limit-data
+# https://firebase.google.com/docs/firestore/manage-data/structure-data
 module Api
   module V1
     class AnasIslamController < ApplicationController
@@ -10,30 +12,34 @@ module Api
 
       def firebase_instance
         project_id = "anasislamqanda"
+        collection = params[:collection] || 'QuestionsDev'
         key_file   = path = File.join(Rails.root, "config", "Anas-Islam-Firebase.json")
         @firestore = Google::Cloud::Firestore.new project: project_id, keyfile: key_file
+        @question_ref =  @firestore.col collection
+
+        set_pagination_data
       end
 
       def index
-        question_ref =  @firestore.col "QuestionsDev"
-        data = query_data(question_ref)
+        pagination = ''
+        if @last_data_created.nil?
+          pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").limit(@limit)
+        else
+          pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
+        end
+
+        data = query_data(pagination)
         _success_response(data)
       rescue StandardError => e
         _error_response(e)
       end
 
-      def show
-      end
-
-      def new
-      end
-
       def create
-        data = eval params[:data].to_s
-        question_ref = @firestore.col "QuestionsDev"
-        added_doc_ref = question_ref.add data
+        data = eval params[:data].to_s # need to convert to String in order to pass to eval
+        data.merge!(date_created: DateTime.now)
 
-        _success_response(data)
+        added_doc_ref = @question_ref.add data
+        _success_response(get_snapshot_data(added_doc_ref.document_id))
         # question = Question.create(question_param)
       rescue StandardError => e
         _error_response e
@@ -52,22 +58,39 @@ module Api
       end
 
       def update
-        begin
-          question = Question.find(params[:id])
-          if question.update(question_param)
-            render json:
-                       {status: 'SUCCESS',
-                        message: 'Documents Updated!',
-                        data: question},
-                   status: :ok
-          end
-        rescue StandardError => e
-          render json:
-                     {status: 'ERROR',
-                      message: 'Documents Not Updated!',
-                      data: e},
-                 status: :unprocessable_entity
+        snapshot = @question_ref.doc(params[:id])
+        data = eval params[:data].to_s
+
+        snapshot.set(data, merge: true)
+
+        _success_response snapshot.get.data.merge(document_id: snapshot.document_id)
+          # question = Question.find(params[:id])
+      rescue StandardError => e
+          _error_response e
+      end
+
+      def get_answered_questions
+        pagination = ''
+        if @last_data_created.nil?
+          pagination = @question_ref.where("answered", "=", true).where("deleted", "=", false).order("date_created").limit(@limit)
+        else
+          pagination = @question_ref.where("answered", "=", true).where("deleted", "=", false).order("date_created")
+                                    .start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
         end
+
+        data = query_data(pagination)
+        _success_response(data)
+      rescue StandardError => e
+        _error_response(e)
+      end
+
+      def get_by_device_id
+        device_id = params[:device_id]
+        pagination = @question_ref.where("device_id", "=", device_id).order("date_created")
+        data = query_data(pagination)
+        _success_response(data)
+      rescue StandardError => e
+        _error_response(e)
       end
 
       def _success_response(data)
@@ -104,13 +127,27 @@ module Api
       def query_data(query)
         data = []
         query.get do |entry|
-          data.push(entry.document_id => entry.data)
+          data.push(entry.data.merge(document_id: entry.document_id))
         end
         data
       end
 
+      def get_snapshot_data(document_id)
+        snapshot = @question_ref.doc(document_id).get
+        snapshot.data.merge(document_id: snapshot.document_id)
+      end
+
       def question_param
         params.permit(:question, :answer, :phone_detail, :deleted, :answered)
+      end
+
+      def set_pagination_data
+        @limit = params[:limit].to_i || 50
+        @last_data_created = params[:last_data_created]
+      end
+
+      def wakeup_server
+        _success_response("Server is UP. Ready to take requests!")
       end
     end
   end
