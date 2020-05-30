@@ -6,6 +6,8 @@ require 'json'
 module Api
   module V1
     class AnasIslamController < ApplicationController
+      include Api::V1::AnasIslamHelper
+
       protect_from_forgery with: :null_session
       skip_before_action :verify_authenticity_token
       before_action :firebase_instance
@@ -21,11 +23,14 @@ module Api
       end
 
       def index
+        answered = to_bool(params[:answered]) || false
+        deleted = to_bool(params[:deleted]) || false
         pagination = ''
         if @last_data_created.nil?
-          pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").limit(@limit)
+          pagination = @question_ref.where("answered", "=", answered).where("deleted", "=", deleted).order("date_created").limit(@limit)
         else
-          pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
+          pagination = @question_ref.where("answered", "=", answered).where("deleted", "=", deleted).order("date_created").start_after(DateTime.parse(@last_data_created)).limit(@limit)
+          # pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
         end
 
         data = query_data(pagination)
@@ -33,6 +38,21 @@ module Api
       rescue StandardError => e
         _error_response(e)
       end
+
+      # def fatawa
+      #   pagination = ''
+      #   if @last_data_created.nil?
+      #     pagination = @question_ref.where("deleted", "=", false).order("date_created").limit(@limit)
+      #   else
+      #     pagination = @question_ref.where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created)).limit(@limit)
+      #     # pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
+      #   end
+      #
+      #   data = query_data(pagination)
+      #   _success_response(data)
+      # rescue StandardError => e
+      #   _error_response(e)
+      # end
 
       def create
         data = eval params[:data].to_s # need to convert to String in order to pass to eval
@@ -67,6 +87,22 @@ module Api
           # question = Question.find(params[:id])
       rescue StandardError => e
           _error_response e
+      end
+
+      def format_current_question
+        question_ref =  @firestore.col 'QUESTIONS'
+        data = []
+        question_ref.get do |entry|
+          snapshot = question_ref.doc(entry.document_id)
+          puts entry['date_created']
+
+          snapshot.set({"deleted": false, "answered": false }, merge: true)
+          data.push(entry.data.merge(document_id: entry.document_id))
+        end
+
+        _success_response(data)
+      rescue StandardError => e
+        _error_response(e)
       end
 
       def get_answered_questions
@@ -142,7 +178,7 @@ module Api
       end
 
       def set_pagination_data
-        @limit = params[:limit].to_i || 50
+        @limit = (params[:limit] || 50).to_i
         @last_data_created = params[:last_data_created]
       end
 
