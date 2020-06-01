@@ -25,12 +25,26 @@ module Api
       def index
         answered = to_bool(params[:answered]) || false
         deleted = to_bool(params[:deleted]) || false
-        pagination = ''
-        if @last_data_created.nil?
-          pagination = @question_ref.where("answered", "=", answered).where("deleted", "=", deleted).order("date_created").limit(@limit)
+        type = params[:type] || 'question'
+        last_document = params[:last_document]
+        query_date_name = (params[:query_date_name]).split(' ')
+
+        puts query_date_name.first
+        puts query_date_name.last
+        if last_document.nil?
+          pagination = @question_ref.where("answered", "=", answered).
+                                     where("deleted", "=", deleted).
+                                     where("type", "=", type).
+                                     order(query_date_name.first, query_date_name.last).
+                                     limit(@limit)
         else
-          pagination = @question_ref.where("answered", "=", answered).where("deleted", "=", deleted).order("date_created").start_after(DateTime.parse(@last_data_created)).limit(@limit)
-          # pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
+          snapshot = @question_ref.doc(last_document).get
+          pagination = @question_ref.where("answered", "=", answered).
+                                     where("deleted", "=", deleted).
+                                     where("type", "=", type).
+                                     order(query_date_name.first, query_date_name.last).
+                                     start_after(snapshot[query_date_name.first]).
+                                     limit(@limit)
         end
 
         data = query_data(pagination)
@@ -39,20 +53,17 @@ module Api
         _error_response(e)
       end
 
-      # def fatawa
-      #   pagination = ''
-      #   if @last_data_created.nil?
-      #     pagination = @question_ref.where("deleted", "=", false).order("date_created").limit(@limit)
-      #   else
-      #     pagination = @question_ref.where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created)).limit(@limit)
-      #     # pagination = @question_ref.where("answered", "=", false).where("deleted", "=", false).order("date_created").start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
-      #   end
-      #
-      #   data = query_data(pagination)
-      #   _success_response(data)
-      # rescue StandardError => e
-      #   _error_response(e)
-      # end
+      def deleted
+        pagination = @question_ref.
+            where("deleted", "=", true).
+            order('date_deleted', 'desc'). # from newest date
+            limit(@limit)
+
+        data = query_data(pagination)
+        _success_response(data)
+      rescue StandardError => e
+        _error_response(e)
+      end
 
       def create
         data = eval params[:data].to_s # need to convert to String in order to pass to eval
@@ -96,25 +107,10 @@ module Api
           snapshot = question_ref.doc(entry.document_id)
           puts entry['date_created']
 
-          snapshot.set({"deleted": false, "answered": false }, merge: true)
+          snapshot.set({'deleted': false, 'answered': false, 'type': 'question'}, merge: true)
           data.push(entry.data.merge(document_id: entry.document_id))
         end
 
-        _success_response(data)
-      rescue StandardError => e
-        _error_response(e)
-      end
-
-      def get_answered_questions
-        pagination = ''
-        if @last_data_created.nil?
-          pagination = @question_ref.where("answered", "=", true).where("deleted", "=", false).order("date_created").limit(@limit)
-        else
-          pagination = @question_ref.where("answered", "=", true).where("deleted", "=", false).order("date_created")
-                                    .start_after(DateTime.parse(@last_data_created) + 0.01.second).limit(@limit)
-        end
-
-        data = query_data(pagination)
         _success_response(data)
       rescue StandardError => e
         _error_response(e)
