@@ -76,6 +76,18 @@ module Api
         _error_response e
       end
 
+      def empty
+        mark_deleted  = @question_ref.where("deleted", "=", true)
+
+        data = []
+        mark_deleted.get do |entry|
+          snapshot = @question_ref.doc(entry.document_id)
+          snapshot.delete
+          data.push(entry.data.merge(document_id: entry.document_id))
+        end
+        _success_response(data)
+      end
+
       def destroy
         question = Question.find(params[:id])
         question.update(deleted: true)
