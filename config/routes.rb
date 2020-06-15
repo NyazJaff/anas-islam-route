@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
 
   root 'questions#index'
-  # resources :questions
+  resources :questions
   namespace 'api' do
     namespace 'v1' do
       get "anas_islam/empty"                       => "anas_islam#empty"

@@ -14,7 +14,7 @@ module Api
 
       def firebase_instance
         project_id = "anasislamqanda"
-        collection = params[:collection] || 'QuestionsDev'
+        collection = params[:collection] || 'QUESTIONS'
         key_file   = path = File.join(Rails.root, "config", "Anas-Islam-Firebase.json")
         @firestore = Google::Cloud::Firestore.new project: project_id, keyfile: key_file
         @question_ref =  @firestore.col collection
@@ -113,13 +113,17 @@ module Api
       end
 
       def format_current_question
-        question_ref =  @firestore.col 'QUESTIONS'
         data = []
-        question_ref.get do |entry|
-          snapshot = question_ref.doc(entry.document_id)
+        @question_ref.get do |entry|
+          snapshot = @question_ref.doc(entry.document_id)
           puts entry['date_created']
 
-          snapshot.set({'deleted': false, 'answered': false, 'type': 'question'}, merge: true)
+          snapshot.set({
+             'deleted':   false,
+             'answered':  false,
+             'type':      'question',
+             'device_id': '',
+          }, merge: true)
           data.push(entry.data.merge(document_id: entry.document_id))
         end
 
